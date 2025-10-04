@@ -58,7 +58,6 @@ desktop.ini
 *.bak
 
 # --- Other ---
-*.zip
 *.tar
 *.gz
 *.rar
