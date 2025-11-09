@@ -34,10 +34,6 @@ venv.bak/
 *.sqlite3
 *.db
 *.db-journal
-*.csv
-*.tsv
-*.xls
-*.xlsx
 *.parquet
 *.feather
 *.h5
