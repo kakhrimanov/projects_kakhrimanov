@@ -1,0 +1,384 @@
+Задание 2.1
+SELECT ntile(2) OVER w AS tile,
+name, city, salary
+FROM employees
+WINDOW w AS (PARTITION BY city ORDER BY salary ASC)
+ORDER BY city, salary;
+
+Задание 2.2
+SELECT id, name, department, salary
+FROM (
+SELECT id, name, city, department, salary, dense_rank() OVER w AS num FROM employees WINDOW w AS (PARTITION BY department ORDER BY salary DESC)
+) AS t1
+WHERE num = 1
+ORDER BY id ASC;
+
+Задание 2.3
+--Есть таблица сотрудников employees. Мы хотим для каждого сотрудника увидеть зарплаты предыдущего и следующего коллеги
+SELECT name, department, 
+  LAG(salary, 1) OVER w AS prev,
+  salary,
+  LEAD(salary, 1) OVER w AS next
+FROM employees
+WINDOW w AS (ORDER BY salary, id)
+ORDER BY salary, id;
+
+Задание 2.4
+--Есть таблица сотрудников employees. Мы хотим для каждого сотрудника увидеть, сколько процентов составляет его зарплата от максимальной в городе:
+SELECT name, city, salary,
+  round(CAST(salary AS FLOAT) * 100 / LAST_VALUE(salary) OVER w)  AS percent
+FROM employees
+WINDOW w AS (PARTITION BY city ORDER BY salary, id ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+ORDER BY city, salary;
+
+Задание 2.5
+--Есть таблица сотрудников employees. Мы хотим для каждого сотрудника увидеть, сколько процентов составляет его зарплата от общего фонда труда по городу:
+SELECT name, city, salary, 
+  SUM(salary) OVER w AS fund,
+  round(salary * 100.0 / SUM(salary) OVER w, 0) AS perc
+FROM employees
+WINDOW w AS (PARTITION BY city)
+ORDER BY city, salary;
+
+Задание 2.6
+--Есть таблица сотрудников employees. Мы хотим для каждого сотрудника увидеть, сколько процентов составляет его зарплата от общего фонда труда по городу:
+WITH
+t1 AS (
+  SELECT id, name, department, salary, 
+    COUNT(id) OVER w AS emp_cnt,
+    ROUND(AVG(salary) OVER w) AS sal_avg
+  FROM employees
+  WINDOW w AS (PARTITION BY department)
+)
+
+SELECT name, department, salary,
+  emp_cnt, sal_avg,
+  round((salary - sal_avg) * 100.0 / sal_avg) AS diff
+FROM t1
+ORDER BY department, salary, id;
+
+Задание 2.7
+--Есть таблица доходов-расходов expenses. Мы хотим рассчитать скользящее среднее по доходам за предыдущий и текущий месяц:
+SELECT year, month, income,
+  AVG(income) OVER w AS roll_avg
+FROM expenses
+WINDOW w AS (PARTITION BY year ORDER BY year, month ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+ORDER BY year, month;
+
+Задание 2.8
+--Мы хотим посчитать фонд оплаты труда нарастающим итогом независимо для каждого департамента:
+SELECT id, name, department, salary,
+  SUM(salary) OVER w AS total
+FROM employees
+WINDOW w AS (PARTITION BY department ORDER BY department, salary, id ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+ORDER BY department, salary, id;
+
+Задание 2.9
+--Напишите запрос, который рассчитает cume_dist (cd) и percent_rank (pr) по температуре для всех дней марта, 
+и вернет пять дней с самой высокой температурой:
+SELECT 
+    wdate, 
+    wtemp,
+    ROUND(CUME_DIST() OVER (ORDER BY wtemp), 2) AS cd,
+    ROUND(PERCENT_RANK() OVER (ORDER BY wtemp), 2) AS pr
+FROM weather
+WHERE wdate >= '2020-03-01' 
+  AND wdate < '2020-04-01'
+ORDER BY wtemp DESC
+LIMIT 5;
+
+Задание 2.10
+-- Продолжаем работать с таблицей температур weather(wdate, wtemp) . 
+Хотим для каждого из дней с 1 по 5 марта определить, 
+какой процент дней в марте имеют такую же или меньшую температуру:
+
+SELECT wdate, wtemp,
+	round(cume_dist() OVER(ORDER BY wtemp), 2) AS perc
+FROM weather
+WHERE wdate >= '2020-03-01' 
+    AND wdate < '2020-04-01'
+ORDER BY wdate
+LIMIT 5;
+
+Задание 2.11
+-- Продолжаем работать с таблицей температур weather(wdate, wtemp) . Хотим для седьмого числа каждого месяца (7 января, 7 февраля, 7 марта ...) определить, какой процент дней в соответствующем месяце имеют такую же или меньшую температуру:
+
+SELECT wdate, wtemp, perc
+FROM (
+    SELECT wdate, wtemp,
+        ROUND(CUME_DIST() OVER (PARTITION BY MONTH(wdate) ORDER BY wtemp), 2) AS perc
+    FROM weather
+) AS t1
+WHERE day(wdate) = 7;
+
+
+Задание 2.12
+
+SELECT DATE_PART('month', wdate) AS wmonth,
+	ROUND(AVG(wtemp)::DECIMAL, 2) AS t_med,
+    percentile_disc(0.5) within group (ORDER BY wtemp) AS t_med,
+    percentile_disc(0.9) within group (ORDER BY wtemp) AS t_p90
+FROM weather
+GROUP BY wmonth
+ORDER BY wmonth;
+
+Задание 2.13
+-- Есть таблица сотрудников employees. Напишите запрос, который для каждого сотрудника выведет:
+-- размер з/п предыдущего по зарплате сотрудника (среди коллег по департаменту);
+-- максимальную з/п по департаменту.
+
+SELECT id, name, department, salary,
+  first_value(salary) OVER w AS prev_salary,
+  MAX(salary) OVER(PARTITION BY department) AS max_salary
+FROM employees
+WINDOW w AS (PARTITION BY department ORDER BY salary, id ROWS BETWEEN 1 PRECEDING AND CURRENT ROW)
+ORDER BY department, salary, id;
+
+
+Задание 2.14
+-- Есть таблица сотрудников employees. 
+-- Для каждого человека мы хотим посчитать количество сотрудников, 
+-- которые получают такую же или большую зарплату (ge_cnt):
+
+SELECT id, name, salary,
+  COUNT(*) OVER w AS ge_cnt
+FROM employees
+WINDOW w AS (ORDER BY salary GROUPS BETWEEN CURRENT ROW AND UNBOUNDED FOLLOWING)
+ORDER BY salary, id
+
+Задание 2.15
+--Есть таблица сотрудников employees. 
+--Для каждого человека мы хотим увидеть 
+--ближайшую большую зарплату (next_salary):
+
+SELECT id, name, salary,
+  last_value(salary) OVER w AS next_salary
+FROM employees
+WINDOW w AS (ORDER BY salary GROUPS BETWEEN 1 FOLLOWING AND 1 FOLLOWING)
+ORDER BY salary, id
+
+Задание 2.16
+-- Есть таблица сотрудников employees. Предположим, для каждого человека мы хотим посчитать количество сотрудников, которые получают такую же --- или большую зарплату, но не более чем +10 тыс. ₽ 
+SELECT id, name, salary, COUNT(*) OVER w AS p10_cnt
+FROM employees
+WINDOW w AS (ORDER BY salary RANGE BETWEEN CURRENT ROW AND 10 FOLLOWING)
+ORDER BY salary, id
+
+Задание 2.17
+-- Есть таблица сотрудников employees. Предположим, для каждого человека мы хотим определить максимальную зарплату среди тех, у кого зарплата на 10–30 тыс. ₽ меньше чем у него:
+SELECT id, name, salary, MAX(salary) OVER w AS lower_sal
+FROM employees
+WINDOW w AS (ORDER BY salary RANGE BETWEEN 30 PRECEDING AND 10 PRECEDING)
+ORDER BY salary, id
+
+Задание 2.18
+-- Есть таблица сотрудников employees. 
+Предположим, для каждого человека мы хотим посчитать среднюю зарплату сотрудников, 
+которые получают столько же или больше, чем он — но не более чем +20 тыс. ₽ (p20_sal). 
+При этом зарплату самого сотрудника учитывать не следует:
+
+SELECT id, name, salary,
+  ROUND(AVG(salary) OVER w) AS p20_sal
+FROM employees
+WINDOW w AS (ORDER BY salary RANGE BETWEEN CURRENT ROW AND 20 FOLLOWING EXCLUDE CURRENT ROW)
+
+Задание 2.19
+-- А теперь еще хотим посчитать, сколько процентов составляет зарплата сотрудника от средней по Москве и средней по Самаре.
+
+SELECT id, name, salary,
+  ROUND(salary / AVG(salary) OVER() * 100) AS perc,
+  ROUND(salary / AVG(salary) FILTER(WHERE city = 'Москва') OVER() * 100) as msk,
+  ROUND(salary / AVG(salary) FILTER(WHERE city = 'Самара') OVER() * 100) as sam
+FROM employees
+ORDER BY id
+
+
+Задание 3.1
+/*
+Есть таблица продаж sales. Посчитайте выручку для тарифа gold по месяцам 2020 года.
+Для каждого месяца дополнительно укажите:
+выручку за предыдущий месяц (prev);
+процент, который составляет выручка текущего месяца от prev (perc).
+Процент округлите до целого.
+*/
+
+SELECT year, month, revenue,
+  LAG(revenue, 1) OVER w AS prev,
+  ROUND(revenue * 100.0 / LAG(revenue, 1) OVER w) AS perc
+FROM sales
+WHERE year = 2020 and plan = 'gold'
+WINDOW w AS (ORDER BY month)
+
+Задание 3.2
+/*
+Есть таблица продаж sales. 
+Посчитайте выручку нарастающим итогом 
+по каждому тарифному плану за первые три месяца 2020 года.
+*/
+
+SELECT plan, year, month, revenue,
+  SUM(revenue) OVER w AS total
+FROM sales
+WHERE year = 2020 and quarter = 1
+WINDOW w AS (PARTITION BY plan ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+ORDER BY plan, month
+
+Задание 3.3
+/*
+Есть таблица продаж sales. 
+Посчитайте скользящую среднюю выручку за 3 месяца 
+(предыдущий, текущий, следующий) для тарифа platinum в 2020 году.
+Округлите среднюю выручку до целого.
+*/
+
+SELECT year, month, revenue,
+  ROUND(AVG(revenue) OVER(ORDER BY month ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)) as avg3m
+FROM sales
+WHERE year = 2020 and plan = 'platinum'
+ORDER BY month
+
+Задание 3.4
+/*
+Есть таблица продаж sales. Посчитайте выручку по месяцам для тарифа silver.
+Для каждого месяца дополнительно укажите:
+выручку за декабрь этого же года (december);
+процент, который составляет выручка текущего месяца от december (perc).
+Процент округлите до целого.
+*/
+
+SELECT year, month, revenue,
+  LAST_VALUE(revenue) OVER(PARTITION BY year ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS december,
+  ROUND(revenue * 100.0 / LAST_VALUE(revenue) OVER(PARTITION BY year ORDER BY month ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)) AS perc
+FROM sales
+WHERE plan = 'silver'
+ORDER BY year, month
+
+Задание 3.5
+/*
+Есть таблица продаж sales. 
+Посчитайте, какой вклад (в процентах) 
+внес каждый из тарифов в общую выручку за год.
+Процент округлите до целого.
+*/
+
+WITH
+t1 AS (
+SELECT year, plan, SUM(revenue) AS revenue
+FROM sales
+GROUP BY year, plan
+)
+
+SELECT year, plan, revenue, 
+  SUM(revenue) OVER(PARTITION BY year) AS total,
+  ROUND(revenue * 100.0 / SUM(revenue) OVER(PARTITION BY year)) AS perc
+FROM t1
+ORDER BY year, plan
+
+Задание 3.6
+/*
+Есть таблица продаж sales. 
+Разбейте месяцы 2020 года на три группы по выручке:
+tile = 1 — высокая,
+tile = 2 — средняя,
+tile = 3 — низкая.
+*/
+
+WITH
+t1 AS (
+SELECT year, month, 
+  SUM(revenue) AS revenue
+FROM sales
+WHERE year = 2020
+GROUP BY year, month
+)
+
+SELECT year, month, revenue,
+  ntile(3) OVER(ORDER BY revenue DESC) AS tile
+FROM t1
+
+Задание 3.7
+/*
+Есть таблица продаж sales. Посчитайте выручку по кварталам 2020 года.
+
+Для каждого квартала дополнительно укажите:
+
+выручку за аналогичный квартал 2019 года (prev);
+процент, который составляет выручка текущего квартала от prev (perc).
+Процент округлите до целого.
+*/
+
+WITH
+t1 AS (
+SELECT year, quarter, 
+  SUM(revenue) AS revenue,
+  LAG(SUM(revenue), 4) OVER() AS prev
+FROM sales
+WHERE year BETWEEN 2019 AND 2020
+GROUP BY year, quarter
+)
+
+SELECT year, quarter, revenue, prev,
+  ROUND(revenue * 100.0 / prev) AS perc
+FROM t1
+WHERE prev IS NOT NULL
+ORDER BY quarter
+
+Задание 3.8
+/*
+Напишите запрос, который выбирает апрельские данные без повторений осадков. Если в дни D1 и D2 выпало N осадков, то в результаты должен попасть только один из этих дней (более поздний).
+*/
+WITH
+t1 AS (
+SELECT wdate, wtemp, precip,
+  LAST_VALUE(wdate) OVER(PARTITION BY precip ORDER BY wdate ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS num
+FROM weather 
+WHERE wdate >= '2020-04-01' and wdate < '2020-05-01'
+)
+
+SELECT wdate, wtemp, precip
+FROM t1
+WHERE wdate = num
+ORDER BY wdate
+
+Задание 3.9
+/*
+Для некоторых дней не указаны осадки (precip). 
+Заполните их как среднее арифметическое значение осадков от предыдущего и следующего дней.
+*/
+
+SELECT wdate, precip,
+  COALESCE(precip, AVG(precip) OVER(ORDER BY wdate ROWS BETWEEN 1 PRECEDING AND 1 FOLLOWING)) AS fixed
+FROM weather
+WHERE (wdate >= '2020-03-06' AND wdate < '2020-03-12') OR (wdate >= '2020-06-01' AND wdate < '2020-06-07')
+ORDER BY wdate
+
+Задание 3.10
+*/
+Посчитайте острова по дате для каждого пользователя — то есть периоды, 
+в которые пользователь набирал хотя бы один балл каждый день без перерыва. 
+Серия из одного дня тоже считается.
+*/
+
+WITH
+t1 AS (
+SELECT adate, user_id, points,
+  unixepoch(adate) / 86400 - ROW_NUMBER() OVER (PARTITION BY user_id ORDER BY adate) AS group_id
+FROM activity
+)
+
+SELECT user_id, MIN(adate) AS day_start, MAX(adate) AS day_end, COUNT(points) AS day_count
+FROM t1
+GROUP BY group_id, user_id
+ORDER BY user_id, day_start
+
+Задание 3.11
+*/
+Серией в этой задаче будем считать последовательность дней, 
+в которых количество набранных пользователем очков 
+в каждый следующий день не меньше, чем в предыдущий. 
+При этом между предыдущим и следующим днем может быть любой промежуток времени, 
+это не прерывает серию. Серии из одного дня не учитываем.
+*/
+
+
+
